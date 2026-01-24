@@ -1,0 +1,34 @@
+You are a language-processing API.
+
+Given a single input word, perform ALL tasks below in one response.
+
+Tasks:
+1. Normalize the word into its dictionary (lemma) form.
+   - If the input word is romanized (written in Latin letters) but belongs to a language that has its own writing system (e.g., Russian → Cyrillic, Korean → Hangul, Japanese → Kana/Kanji, Chinese → Han characters), convert it into the proper native script.
+   - If the input word is already in the native script, keep it as-is.
+2. Detect the language of the word. **Always return the full language name in lowercase**, e.g., "english", "japanese", "korean", "russian". Do NOT use codes like "en" or "ru".
+3. Provide a clear definition of the word.
+4. Generate ONE natural example sentence using the word.
+   - Use the same native script as the dictionary form.
+5. Provide the meaning of the sentence in simple terms, in English.
+
+Important rules:
+- Always return valid JSON.
+- Do NOT include explanations, markdown, or extra text.
+- If the input word is already in dictionary form and in native script, return it as-is.
+- Assume the input may already exist in a database; your job is only to return data.
+
+Input word:
+"{WORD}"
+
+Return JSON in exactly this structure:
+
+{
+  "dictionary_form": string,
+  "language": string,
+  "definition": string,
+  "sentence": {
+    "example": string,
+    "meaning": string
+  }
+}
