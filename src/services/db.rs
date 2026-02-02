@@ -184,6 +184,30 @@ pub async fn get_sentences_by_word(
         .collect())
 }
 
+pub async fn get_sentences_by_word_ids(
+    word_ids: &[i32],
+) -> Result<Vec<(i32, i32, String, Option<String>)>, tokio_postgres::Error> {
+    let conn = get_conn().await;
+    let rows = conn
+        .query(
+            "SELECT id, word_id, example, meaning FROM sentence WHERE word_id = ANY($1)",
+            &[&word_ids],
+        )
+        .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            (
+                row.get("id"),
+                row.get("word_id"),
+                row.get("example"),
+                row.get("meaning"),
+            )
+        })
+        .collect())
+}
+
 pub async fn delete_sentence(id: i32) -> Result<(), tokio_postgres::Error> {
     let conn = get_conn().await;
     conn.execute("DELETE FROM sentence WHERE id = $1", &[&id])

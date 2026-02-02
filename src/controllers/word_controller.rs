@@ -3,8 +3,10 @@ use axum::{
     http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::services::db;
+use crate::services::word::init_word_service;
 
 #[derive(Deserialize)]
 pub struct PaginationParams {
@@ -14,9 +16,7 @@ pub struct PaginationParams {
 
 #[derive(Deserialize)]
 pub struct CreateWordRequest {
-    pub language: String,
     pub term: String,
-    pub definition: String,
 }
 
 #[derive(Serialize)]
@@ -79,8 +79,7 @@ pub async fn get_word(
 
 pub async fn get_all_words(
     Query(params): Query<PaginationParams>,
-) -> Result<Json<Vec<WordResponse>>, StatusCode> {
-    // Default to 20 items per page starting at 0
+) -> Result<Json<Vec<WordResponseWithSentences>>, StatusCode> {
     let limit = params.limit.unwrap_or(20);
     let offset = params.offset.unwrap_or(0);
 
@@ -88,13 +87,39 @@ pub async fn get_all_words(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    if words_data.is_empty() {
+        return Ok(Json(vec![]));
+    }
+
+    let word_ids: Vec<i32> = words_data.iter().map(|(id, ..)| *id).collect();
+
+    let all_sentences = db::get_sentences_by_word_ids(&word_ids)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let mut sentences_map: HashMap<i32, Vec<SentenceResponse>> = HashMap::new();
+    for (s_id, w_id, example, meaning) in all_sentences {
+        sentences_map
+            .entry(w_id)
+            .or_default()
+            .push(SentenceResponse {
+                id: s_id,
+                example,
+                meaning,
+            });
+    }
+
     let response = words_data
         .into_iter()
-        .map(|(id, language, term, definition)| WordResponse {
-            id,
-            language,
-            term,
-            definition,
+        .map(|(id, language, term, definition)| {
+            let sentences = sentences_map.remove(&id).unwrap_or_default();
+            WordResponseWithSentences {
+                id,
+                language,
+                term,
+                definition,
+                sentences,
+            }
         })
         .collect();
 
@@ -103,20 +128,34 @@ pub async fn get_all_words(
 
 pub async fn create_word(
     Json(payload): Json<CreateWordRequest>,
-) -> Result<Json<WordResponse>, StatusCode> {
-    let lang_id = db::create_language(&payload.language)
+) -> Result<Json<WordResponseWithSentences>, StatusCode> {
+    let word_service = init_word_service().await;
+    let ai_word = word_service.get_detail(&payload.term).await;
+    let lang_id = db::create_language(&ai_word.language)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let word_id = db::create_word(lang_id, &ai_word.dictionary_form, &ai_word.definition)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let word_id = db::create_word(lang_id, &payload.term, &payload.definition)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let sentence_id = db::create_sentence(
+        word_id,
+        &ai_word.sentence.example,
+        Some(&ai_word.sentence.meaning),
+    )
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(Json(WordResponse {
+    Ok(Json(WordResponseWithSentences {
         id: word_id,
-        language: payload.language,
-        term: payload.term,
-        definition: payload.definition,
+        language: ai_word.language,
+        term: ai_word.dictionary_form,
+        definition: ai_word.definition,
+        sentences: vec![SentenceResponse {
+            id: sentence_id,
+            example: ai_word.sentence.example,
+            meaning: Some(ai_word.sentence.meaning),
+        }],
     }))
 }
 
