@@ -1,5 +1,6 @@
 use bb8::Pool;
 use bb8_postgres::PostgresConnectionManager;
+use bb8_postgres::tokio_postgres::Row;
 use std::env;
 use tokio::sync::OnceCell;
 use tokio_postgres::NoTls;
@@ -114,6 +115,13 @@ pub async fn get_word(
     }))
 }
 
+pub async fn delete_word(id: i32) -> Result<(), tokio_postgres::Error> {
+    let conn = get_conn().await;
+    conn.execute("DELETE FROM word WHERE id = $1", &[&id])
+        .await?;
+    Ok(())
+}
+
 pub async fn create_sentence(
     word_id: i32,
     example: &str,
@@ -127,4 +135,27 @@ pub async fn create_sentence(
         )
         .await?;
     Ok(row.get("id"))
+}
+
+pub async fn get_sentences_by_word(
+    word_id: i32,
+) -> Result<Vec<(i32, String, Option<String>)>, tokio_postgres::Error> {
+    let conn = get_conn().await;
+    let rows: Vec<Row> = conn
+        .query(
+            "SELECT id, example, meaning FROM sentence WHERE word_id = $1",
+            &[&word_id],
+        )
+        .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| (row.get("id"), row.get("example"), row.get("meaning")))
+        .collect())
+}
+
+pub async fn delete_sentence(id: i32) -> Result<(), tokio_postgres::Error> {
+    let conn = get_conn().await;
+    conn.execute("DELETE FROM sentence WHERE id = $1", &[&id])
+        .await?;
+    Ok(())
 }
