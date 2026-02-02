@@ -1,10 +1,16 @@
 use axum::{
-    extract::{Json, Path},
+    extract::{Json, Path, Query},
     http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::services::db;
+
+#[derive(Deserialize)]
+pub struct PaginationParams {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
 
 #[derive(Deserialize)]
 pub struct CreateWordRequest {
@@ -69,6 +75,30 @@ pub async fn get_word(
         }
         None => Err(StatusCode::NOT_FOUND),
     }
+}
+
+pub async fn get_all_words(
+    Query(params): Query<PaginationParams>,
+) -> Result<Json<Vec<WordResponse>>, StatusCode> {
+    // Default to 20 items per page starting at 0
+    let limit = params.limit.unwrap_or(20);
+    let offset = params.offset.unwrap_or(0);
+
+    let words_data = db::get_all_words(limit, offset)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let response = words_data
+        .into_iter()
+        .map(|(id, language, term, definition)| WordResponse {
+            id,
+            language,
+            term,
+            definition,
+        })
+        .collect();
+
+    Ok(Json(response))
 }
 
 pub async fn create_word(

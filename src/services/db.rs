@@ -115,6 +115,37 @@ pub async fn get_word(
     }))
 }
 
+pub async fn get_all_words(
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<(i32, String, String, String)>, tokio_postgres::Error> {
+    let conn = get_conn().await;
+    let rows = conn
+        .query(
+            r#"
+            SELECT w.id, l.name as language, w.term, w.definition 
+            FROM word w
+            JOIN language l ON w.language_id = l.id
+            ORDER BY w.id ASC
+            LIMIT $1 OFFSET $2
+            "#,
+            &[&limit, &offset],
+        )
+        .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            (
+                row.get("id"),
+                row.get("language"),
+                row.get("term"),
+                row.get("definition"),
+            )
+        })
+        .collect())
+}
+
 pub async fn delete_word(id: i32) -> Result<(), tokio_postgres::Error> {
     let conn = get_conn().await;
     conn.execute("DELETE FROM word WHERE id = $1", &[&id])
