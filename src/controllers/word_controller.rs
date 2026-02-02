@@ -14,6 +14,13 @@ pub struct CreateWordRequest {
 }
 
 #[derive(Serialize)]
+pub struct SentenceResponse {
+    pub id: i32,
+    pub example: String,
+    pub meaning: Option<String>,
+}
+
+#[derive(Serialize)]
 pub struct WordResponse {
     pub id: i32,
     pub language: String,
@@ -21,20 +28,45 @@ pub struct WordResponse {
     pub definition: String,
 }
 
+#[derive(Serialize)]
+pub struct WordResponseWithSentences {
+    pub id: i32,
+    pub language: String,
+    pub term: String,
+    pub definition: String,
+    pub sentences: Vec<SentenceResponse>,
+}
+
 pub async fn get_word(
     Path((language, term)): Path<(String, String)>,
-) -> Result<Json<WordResponse>, StatusCode> {
+) -> Result<Json<WordResponseWithSentences>, StatusCode> {
     let word = db::get_word(&language, &term)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     match word {
-        Some((id, term, definition)) => Ok(Json(WordResponse {
-            id,
-            language,
-            term,
-            definition,
-        })),
+        Some((id, term, definition)) => {
+            let sentences_data = db::get_sentences_by_word(id)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+            let sentences = sentences_data
+                .into_iter()
+                .map(|(s_id, example, meaning)| SentenceResponse {
+                    id: s_id,
+                    example,
+                    meaning,
+                })
+                .collect();
+
+            Ok(Json(WordResponseWithSentences {
+                id,
+                language,
+                term,
+                definition,
+                sentences,
+            }))
+        }
         None => Err(StatusCode::NOT_FOUND),
     }
 }
