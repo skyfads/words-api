@@ -207,10 +207,3 @@ pub async fn get_sentences_by_word_ids(
         })
         .collect())
 }
-
-pub async fn delete_sentence(id: i32) -> Result<(), tokio_postgres::Error> {
-    let conn = get_conn().await;
-    conn.execute("DELETE FROM sentence WHERE id = $1", &[&id])
-        .await?;
-    Ok(())
-}
