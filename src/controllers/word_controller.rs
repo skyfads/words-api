@@ -32,20 +32,12 @@ pub struct WordResponse {
     pub language: String,
     pub term: String,
     pub definition: String,
-}
-
-#[derive(Serialize)]
-pub struct WordResponseWithSentences {
-    pub id: i32,
-    pub language: String,
-    pub term: String,
-    pub definition: String,
     pub sentences: Vec<SentenceResponse>,
 }
 
 pub async fn get_word(
     Path((language, term)): Path<(String, String)>,
-) -> Result<Json<WordResponseWithSentences>, StatusCode> {
+) -> Result<Json<WordResponse>, StatusCode> {
     let word = db::get_word(&language, &term)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -65,7 +57,7 @@ pub async fn get_word(
                 })
                 .collect();
 
-            Ok(Json(WordResponseWithSentences {
+            Ok(Json(WordResponse {
                 id,
                 language,
                 term,
@@ -79,7 +71,7 @@ pub async fn get_word(
 
 pub async fn get_all_words(
     Query(params): Query<PaginationParams>,
-) -> Result<Json<Vec<WordResponseWithSentences>>, StatusCode> {
+) -> Result<Json<Vec<WordResponse>>, StatusCode> {
     let limit = params.limit.unwrap_or(20);
     let offset = params.offset.unwrap_or(0);
 
@@ -113,7 +105,7 @@ pub async fn get_all_words(
         .into_iter()
         .map(|(id, language, term, definition)| {
             let sentences = sentences_map.remove(&id).unwrap_or_default();
-            WordResponseWithSentences {
+            WordResponse {
                 id,
                 language,
                 term,
@@ -128,7 +120,7 @@ pub async fn get_all_words(
 
 pub async fn create_word(
     Json(payload): Json<CreateWordRequest>,
-) -> Result<Json<WordResponseWithSentences>, StatusCode> {
+) -> Result<Json<WordResponse>, StatusCode> {
     let word_service = init_word_service().await;
     let ai_word = word_service.get_detail(&payload.term).await;
     let lang_id = db::create_language(&ai_word.language)
@@ -146,7 +138,7 @@ pub async fn create_word(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(Json(WordResponseWithSentences {
+    Ok(Json(WordResponse {
         id: word_id,
         language: ai_word.language,
         term: ai_word.dictionary_form,
