@@ -4,6 +4,7 @@ use bb8_postgres::tokio_postgres::Row;
 use std::env;
 use tokio::sync::OnceCell;
 use tokio_postgres::NoTls;
+use tokio_postgres::error::SqlState;
 
 pub type PgPool = Pool<PostgresConnectionManager<NoTls>>;
 
@@ -65,13 +66,33 @@ pub async fn run_migrations() -> Result<(), tokio_postgres::Error> {
 
 pub async fn create_language(name: &str) -> Result<i32, tokio_postgres::Error> {
     let conn = get_conn().await;
-    let row = conn
+
+    if let Some(row) = conn
+        .query_opt("SELECT id FROM language WHERE name = $1", &[&name])
+        .await?
+    {
+        return Ok(row.get("id"));
+    }
+
+    match conn
         .query_one(
-            "INSERT INTO language(name) VALUES($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+            "INSERT INTO language(name) VALUES($1) RETURNING id",
             &[&name],
         )
-        .await?;
-    Ok(row.get("id"))
+        .await
+    {
+        Ok(row) => Ok(row.get("id")),
+        Err(e) => {
+            if e.code() == Some(&SqlState::UNIQUE_VIOLATION) {
+                let row = conn
+                    .query_one("SELECT id FROM language WHERE name = $1", &[&name])
+                    .await?;
+                Ok(row.get("id"))
+            } else {
+                Err(e)
+            }
+        }
+    }
 }
 
 pub async fn create_word(
@@ -80,13 +101,42 @@ pub async fn create_word(
     definition: &str,
 ) -> Result<i32, tokio_postgres::Error> {
     let conn = get_conn().await;
-    let row = conn
+
+    if let Some(row) = conn
+        .query_opt(
+            "SELECT id FROM word WHERE language_id = $1 AND term = $2",
+            &[&language_id, &term],
+        )
+        .await?
+    {
+        return Ok(row.get("id"));
+    }
+
+    match conn
         .query_one(
-            "INSERT INTO word(language_id, term, definition) VALUES($1, $2, $3) ON CONFLICT(language_id, term) DO UPDATE SET definition = EXCLUDED.definition RETURNING id",
+            "INSERT INTO word(language_id, term, definition)
+             VALUES($1, $2, $3)
+             RETURNING id",
             &[&language_id, &term, &definition],
         )
-        .await?;
-    Ok(row.get("id"))
+        .await
+    {
+        Ok(row) => Ok(row.get("id")),
+
+        Err(e) => {
+            if e.code() == Some(&tokio_postgres::error::SqlState::UNIQUE_VIOLATION) {
+                let row = conn
+                    .query_one(
+                        "SELECT id FROM word WHERE language_id = $1 AND term = $2",
+                        &[&language_id, &term],
+                    )
+                    .await?;
+                Ok(row.get("id"))
+            } else {
+                Err(e)
+            }
+        }
+    }
 }
 
 pub async fn get_word(
@@ -160,17 +210,42 @@ pub async fn create_sentence(
     meaning: Option<&str>,
 ) -> Result<i32, tokio_postgres::Error> {
     let conn = get_conn().await;
-    let row = conn
+
+    if let Some(row) = conn
+        .query_opt(
+            "SELECT id FROM sentence WHERE word_id = $1 AND example = $2",
+            &[&word_id, &example],
+        )
+        .await?
+    {
+        return Ok(row.get("id"));
+    }
+
+    match conn
         .query_one(
             "INSERT INTO sentence(word_id, example, meaning)
              VALUES($1, $2, $3)
-             ON CONFLICT(word_id, example)
-             DO UPDATE SET word_id = sentence.word_id -- This is a 'no-op' update
              RETURNING id",
             &[&word_id, &example, &meaning],
         )
-        .await?;
-    Ok(row.get("id"))
+        .await
+    {
+        Ok(row) => Ok(row.get("id")),
+
+        Err(e) => {
+            if e.code() == Some(&tokio_postgres::error::SqlState::UNIQUE_VIOLATION) {
+                let row = conn
+                    .query_one(
+                        "SELECT id FROM sentence WHERE word_id = $1 AND example = $2",
+                        &[&word_id, &example],
+                    )
+                    .await?;
+                Ok(row.get("id"))
+            } else {
+                Err(e)
+            }
+        }
+    }
 }
 
 pub async fn get_sentences_by_word(
