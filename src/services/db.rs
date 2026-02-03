@@ -54,7 +54,8 @@ pub async fn run_migrations() -> Result<(), tokio_postgres::Error> {
         id SERIAL PRIMARY KEY,
         word_id INT NOT NULL REFERENCES word(id) ON DELETE CASCADE,
         example TEXT NOT NULL,
-        meaning TEXT
+        meaning TEXT,
+        UNIQUE(word_id, example)
     );
     "#;
 
@@ -161,7 +162,11 @@ pub async fn create_sentence(
     let conn = get_conn().await;
     let row = conn
         .query_one(
-            "INSERT INTO sentence(word_id, example, meaning) VALUES($1, $2, $3) RETURNING id",
+            "INSERT INTO sentence(word_id, example, meaning)
+             VALUES($1, $2, $3)
+             ON CONFLICT(word_id, example)
+             DO UPDATE SET word_id = sentence.word_id -- This is a 'no-op' update
+             RETURNING id",
             &[&word_id, &example, &meaning],
         )
         .await?;
