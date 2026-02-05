@@ -16,6 +16,8 @@ mod routes {
     pub mod word_routes;
 }
 
+mod extra;
+
 use routes::word_routes::word_routes;
 use services::db;
 

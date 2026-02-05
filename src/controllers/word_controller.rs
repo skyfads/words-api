@@ -5,6 +5,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::extra::normalize_input;
 use crate::services::db;
 use crate::services::word::init_word_service;
 
@@ -121,8 +122,13 @@ pub async fn get_all_words(
 pub async fn create_word(
     Json(payload): Json<CreateWordRequest>,
 ) -> Result<Json<WordResponse>, StatusCode> {
+    let clean_term = normalize_input(&payload.term);
+
+    if clean_term.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
     let word_service = init_word_service().await;
-    let ai_word = word_service.get_detail(&payload.term).await;
+    let ai_word = word_service.get_detail(&clean_term).await;
     let lang_id = db::create_language(&ai_word.language)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
